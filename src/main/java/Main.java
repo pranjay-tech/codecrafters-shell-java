@@ -23,7 +23,7 @@ public class Main {
                 continue;
             }
             // toggle Single if not in double
-            if (c == '\'' && !inDouble) {
+            if (c == '\'' && !inDouble && !escape) {
                 inSingle = !inSingle;
                 continue;
             }

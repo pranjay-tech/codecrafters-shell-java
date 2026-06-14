@@ -20,10 +20,15 @@ public class Main {
             else if (input.startsWith("cd ")) {
                 String path = input.substring(3);
                 File newDir;
-                if (path.startsWith("/")) {
-                    newDir = new File(path);   // absolute path
-                } else {
-                    newDir = new File(currentDirectory, path); // relative path
+                if (path.equals("~")) {
+                    String home = System.getenv("HOME");
+                    newDir = new File(home);
+                } 
+                else if (path.startsWith("/")) {
+                    newDir = new File(path);
+                } 
+                else {
+                    newDir = new File(currentDirectory, path);
                 }
                 if (newDir.exists() && newDir.isDirectory()) {
                     currentDirectory = newDir.getCanonicalFile();

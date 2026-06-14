@@ -19,9 +19,14 @@ public class Main {
             }
             else if (input.startsWith("cd ")) {
                 String path = input.substring(3);
-                File newDir = new File(path);
+                File newDir;
+                if (path.startsWith("/")) {
+                    newDir = new File(path);   // absolute path
+                } else {
+                    newDir = new File(currentDirectory, path); // relative path
+                }
                 if (newDir.exists() && newDir.isDirectory()) {
-                    currentDirectory = newDir;
+                    currentDirectory = newDir.getCanonicalFile();
                 } else {
                     System.out.println("cd: " + path + ": No such file or directory");
                 }

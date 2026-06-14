@@ -8,18 +8,31 @@ public class Main {
         StringBuilder current = new StringBuilder();
         boolean inSingle = false;
         boolean inDouble = false;
+        boolean escape = false;
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
+            //Escape outside quotes
+            if (!inSingle && !inDouble && escape) {
+                current.append(c);
+                escape = false;
+                continue;
+            }
+            //Backslash outside quote
+            if(c=='\\' && !inSingle && !inDouble) {
+                escape = true;
+                continue;
+            }
             // toggle Single if not in double
             if (c == '\'' && !inDouble) {
                 inSingle = !inSingle;
                 continue;
             }
             //toggle double if not in single
-            if (c == '"' && !inSingle) {
+            if (c == '"' && !inSingle && !escape) {
                 inDouble = !inDouble;
                 continue;
             }
+            //remove space outside the quotes
             if (Character.isWhitespace(c) && !inSingle && !inDouble) {
                 if (current.length() > 0) {
                     args.add(current.toString());

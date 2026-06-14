@@ -39,7 +39,23 @@ public class Main {
                 }
             }
             else {
-                System.out.println(input + ": command not found");
+                String[] parts = input.split(" ");
+                String path = System.getenv("PATH");
+                boolean found = false;
+                for (String dir : path.split(File.pathSeparator)) {
+                    File file = new File(dir, parts[0]);
+                    if (file.exists() && file.canExecute()) {
+                        ProcessBuilder pb = new ProcessBuilder(parts);
+                        Process process = pb.start();
+                        process.getInputStream().transferTo(System.out);
+                        process.waitFor();
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    System.out.println(input + ": command not found");
+                }
             }
         }
     }

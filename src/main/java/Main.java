@@ -1,26 +1,33 @@
 import java.io.File;
 import java.util.Scanner;
 
-
 public class Main {
+
     private static String[] parseCommand(String input) {
         java.util.ArrayList<String> args = new java.util.ArrayList<>();
         StringBuilder current = new StringBuilder();
-        boolean inSingleQuote = false;
+        boolean inSingle = false;
+        boolean inDouble = false;
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == '\'') {
-                inSingleQuote = !inSingleQuote;
+            // toggle Single if not in double
+            if (c == '\'' && !inDouble) {
+                inSingle = !inSingle;
+                continue;
             }
-            else if (Character.isWhitespace(c) && !inSingleQuote) {
+            //toggle double if not in single
+            if (c == '"' && !inSingle) {
+                inDouble = !inDouble;
+                continue;
+            }
+            if (Character.isWhitespace(c) && !inSingle && !inDouble) {
                 if (current.length() > 0) {
                     args.add(current.toString());
                     current.setLength(0);
                 }
+                continue;
             }
-            else {
-                current.append(c);
-            }
+            current.append(c);
         }
         if (current.length() > 0) {
             args.add(current.toString());
@@ -28,39 +35,38 @@ public class Main {
         return args.toArray(new String[0]);
     }
 
-    public static void main(String[] args) throws Exception {
-        // TODO: Uncomment the code below to pass the first stage
-        Scanner sc = new Scanner(System.in);
-        
 
-        File currentDirectory = new File(System.getProperty("user.dir"));
+    public static void main(String[] args) throws Exception {
+        Scanner sc = new Scanner(System.in);
+        File currentDirectory =
+                new File(System.getProperty("user.dir"));
         while (true) {
             System.out.print("$ ");
-
             String input = sc.nextLine();
-
             String[] parts = parseCommand(input);
-
-            if(parts.length == 0){
+            if (parts.length == 0) {
                 continue;
             }
-            if(input.equals("exit")){
+            String cmd = parts[0];
+            // exit
+            if (cmd.equals("exit")) {
                 break;
             }
-            else if (input.equals("pwd")){
-                // System.out.println(System.getProperty("user.dir"));   //for pwd function
-                System.out.println(currentDirectory.getAbsolutePath());  //for cd function
+            // pwd
+            else if (cmd.equals("pwd")) {
+                System.out.println(currentDirectory.getAbsolutePath());
             }
-            else if (input.startsWith("cd ")) {
-                String path = input.substring(3);
+            // cd
+            else if (cmd.equals("cd")) {
+                if (parts.length < 2) continue;
+                String path = parts[1];
                 File newDir;
                 if (path.equals("~")) {
-                    String home = System.getenv("HOME");
-                    newDir = new File(home);
-                } 
+                    newDir = new File(System.getenv("HOME"));
+                }
                 else if (path.startsWith("/")) {
                     newDir = new File(path);
-                } 
+                }
                 else {
                     newDir = new File(currentDirectory, path);
                 }
@@ -70,42 +76,43 @@ public class Main {
                     System.out.println("cd: " + path + ": No such file or directory");
                 }
             }
-            else if (parts[0].equals("echo")) {
+            // echo
+            else if (cmd.equals("echo")) {
                 for (int i = 1; i < parts.length; i++) {
-                    if (i > 1) {
-                        System.out.print(" ");
-                    }
+                    if (i > 1) System.out.print(" ");
                     System.out.print(parts[i]);
                 }
                 System.out.println();
             }
-            else if (input.startsWith("type ")) {
-                String cmd = input.substring(5);
-                if (cmd.equals("echo") || cmd.equals("exit") || cmd.equals("type") || cmd.equals("pwd") || cmd.equals("cd")) {
-                    System.out.println(cmd + " is a shell builtin");
-                } 
-                else{
+            // type
+            else if (cmd.equals("type")) {
+                if (parts.length < 2) continue;
+                String t = parts[1];
+                if (t.equals("echo") || t.equals("exit") || t.equals("type") || t.equals("pwd") || t.equals("cd")) {
+                    System.out.println(t + " is a shell builtin");
+                }
+                else {
                     String path = System.getenv("PATH");
                     boolean found = false;
-                    
-                    for(String dir : path.split(File.pathSeparator)){
-                        File file = new File(dir, cmd);
+                    for (String dir : path.split(File.pathSeparator)) {
+                        File file = new File(dir, t);
                         if (file.exists() && file.canExecute()) {
-                            System.out.println(cmd + " is " + file.getAbsolutePath());
+                            System.out.println(t + " is " + file.getAbsolutePath());
                             found = true;
                             break;
                         }
                     }
-                    if(!found){
-                        System.out.println(cmd + ": not found");
+                    if (!found) {
+                        System.out.println(t + ": not found");
                     }
                 }
             }
+            // external commands
             else {
-                String path = System.getenv("PATH");
                 boolean found = false;
+                String path = System.getenv("PATH");
                 for (String dir : path.split(File.pathSeparator)) {
-                    File file = new File(dir, parts[0]);
+                    File file = new File(dir, cmd);
                     if (file.exists() && file.canExecute()) {
                         ProcessBuilder pb = new ProcessBuilder(parts);
                         pb.directory(currentDirectory);
@@ -117,7 +124,7 @@ public class Main {
                     }
                 }
                 if (!found) {
-                    System.out.println(input + ": command not found");
+                    System.out.println(cmd + ": command not found");
                 }
             }
         }

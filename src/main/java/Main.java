@@ -8,27 +8,39 @@ public class Main {
         StringBuilder current = new StringBuilder();
         boolean inSingle = false;
         boolean inDouble = false;
-        boolean escape = false;
+        // boolean escape = false;
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            //Escape outside quotes
-            if (!inSingle && !inDouble && escape) {
-                current.append(c);
-                escape = false;
-                continue;
-            }
-            //Backslash outside quote
-            if(c=='\\' && !inSingle && !inDouble) {
-                escape = true;
+            //BackSlash Handling
+            if (c == '\\' && !inSingle) {
+            // INSIDE DOUBLE QUOTES
+                if (inDouble) {
+                    if (i + 1 < input.length()) {
+                        char next = input.charAt(i + 1);
+                        if (next == '"' || next == '\\') {
+                            current.append(next);
+                            i++; // consume next char
+                        } else {
+                            current.append(next);
+                            i++;
+                        }
+                    }
+                    continue;
+                }
+                // OUTSIDE QUOTES
+                if (i + 1 < input.length()) {
+                    current.append(input.charAt(i + 1));
+                    i++; // consume next char
+                }
                 continue;
             }
             // toggle Single if not in double
-            if (c == '\'' && !inDouble && !escape) {
+            if (c == '\'' && !inDouble) {
                 inSingle = !inSingle;
                 continue;
             }
             //toggle double if not in single
-            if (c == '"' && !inSingle && !escape) {
+            if (c == '"' && !inSingle) {
                 inDouble = !inDouble;
                 continue;
             }

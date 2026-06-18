@@ -128,6 +128,83 @@ public class Main {
         return id;
     }
 
+    // Split a list of tokens into segments separated by "|"
+    private static java.util.ArrayList<String[]> splitByPipe(String[] parts) {
+        java.util.ArrayList<String[]> segments = new java.util.ArrayList<>();
+        java.util.ArrayList<String> current = new java.util.ArrayList<>();
+        for (String part : parts) {
+            if (part.equals("|")) {
+                if (!current.isEmpty()) {
+                    segments.add(current.toArray(new String[0]));
+                    current.clear();
+                }
+            } else {
+                current.add(part);
+            }
+        }
+        if (!current.isEmpty()) {
+            segments.add(current.toArray(new String[0]));
+        }
+        return segments;
+    }
+
+    // Execute a pipeline of two or more external commands
+    private static void executePipeline(
+            java.util.ArrayList<String[]> segments,
+            File currentDirectory,
+            String stdoutFile,
+            boolean appendStdout,
+            String stderrFile,
+            boolean appendStderr
+    ) throws Exception {
+        int n = segments.size();
+
+        // Build all ProcessBuilders
+        java.util.ArrayList<ProcessBuilder> builders = new java.util.ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            ProcessBuilder pb = new ProcessBuilder(segments.get(i));
+            pb.directory(currentDirectory);
+            // stderr for all processes goes to terminal or file
+            if (stderrFile != null) {
+                if (appendStderr) {
+                    pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(stderrFile)));
+                } else {
+                    pb.redirectError(new File(stderrFile));
+                }
+            } else {
+                pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+            }
+            builders.add(pb);
+        }
+
+        // Use Java's built-in pipeline support (Java 9+)
+        // This correctly wires stdout of each process to stdin of the next
+        java.util.List<Process> procs = ProcessBuilder.startPipeline(builders);
+
+        // Handle stdout of last process
+        Process last = procs.get(procs.size() - 1);
+        if (stdoutFile != null) {
+            // drain last process stdout to file
+            byte[] buf = last.getInputStream().readAllBytes();
+            if (appendStdout) {
+                Files.write(Path.of(stdoutFile), buf,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } else {
+                Files.write(Path.of(stdoutFile), buf,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            }
+        } else {
+            // stream last process stdout to terminal
+            last.getInputStream().transferTo(System.out);
+            System.out.flush();
+        }
+
+        // Wait for all processes
+        for (Process p : procs) {
+            p.waitFor();
+        }
+    }
+
     public static void main(String[] args) throws Exception {
         Scanner sc = new Scanner(System.in);
         File currentDirectory =
@@ -221,6 +298,24 @@ public class Main {
             if (parts.length == 0) {
                 continue;
             }
+
+            // Check if this is a pipeline command
+            boolean hasPipe = false;
+            for (String part : parts) {
+                if (part.equals("|")) {
+                    hasPipe = true;
+                    break;
+                }
+            }
+
+            // pipeline handling
+            if (hasPipe) {
+                java.util.ArrayList<String[]> segments = splitByPipe(parts);
+                executePipeline(segments, currentDirectory,
+                    stdoutFile, appendStdout, stderrFile, appendStderr);
+                continue;
+            }
+
             String cmd = parts[0];
             // exit
             if (cmd.equals("exit")) {

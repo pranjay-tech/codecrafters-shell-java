@@ -71,18 +71,49 @@ public class Main {
     }
 
     static class Job {
-    int jobId;
-    long pid;
-    String command;
-    Process process;
+        int jobId;
+        long pid;
+        String command;
+        Process process;
 
-    Job(int jobId, long pid, String command, Process process) {
-        this.jobId = jobId;
-        this.pid = pid;
-        this.command = command;
-        this.process = process;
+        Job(int jobId, long pid, String command, Process process) {
+            this.jobId = jobId;
+            this.pid = pid;
+            this.command = command;
+            this.process = process;
+        }
     }
-}
+
+    // Shared reaping logic: print Done for completed jobs, remove them from table
+    private static void reapJobs(java.util.ArrayList<Job> jobs) {
+        java.util.ArrayList<Job> completedJobs = new java.util.ArrayList<>();
+        int total = jobs.size();
+
+        for (int i = 0; i < total; i++) {
+            Job job = jobs.get(i);
+            // + for last, - for second-to-last, space for all others
+            String marker;
+            if (i == total - 1) {
+                marker = "+";
+            } else if (i == total - 2) {
+                marker = "-";
+            } else {
+                marker = " ";
+            }
+            if (!job.process.isAlive()) {
+                System.out.printf(
+                    "[%d]%s  %-23s %s\n",
+                    job.jobId,
+                    marker,
+                    "Done",
+                    job.command
+                );
+                completedJobs.add(job);
+            }
+        }
+        // Remove completed jobs after printing
+        jobs.removeAll(completedJobs);
+    }
 
     public static void main(String[] args) throws Exception {
         Scanner sc = new Scanner(System.in);
@@ -91,6 +122,9 @@ public class Main {
         int nextJobId = 1;
         java.util.ArrayList<Job> jobs = new java.util.ArrayList<>();
         while (true) {
+            // Reap completed jobs before printing the prompt
+            reapJobs(jobs);
+
             System.out.print("$ ");
             String input = sc.nextLine();
             String[] parts = parseCommand(input);
@@ -240,10 +274,10 @@ public class Main {
             }
             // jobs
             else if (cmd.equals("jobs")) {
-                java.util.ArrayList<Job> completedJobs = new java.util.ArrayList<>();
                 int total = jobs.size();
+                java.util.ArrayList<Job> completedJobs = new java.util.ArrayList<>();
 
-                // First pass: print all jobs with markers based on full current list
+                // Print all jobs with markers based on full current list
                 for (int i = 0; i < total; i++) {
                     Job job = jobs.get(i);
                     // + for last, - for second-to-last, space for all others

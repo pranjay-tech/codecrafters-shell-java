@@ -240,33 +240,38 @@ public class Main {
             }
             // jobs
             else if (cmd.equals("jobs")) {
-                int aliveCount = 0;
-                for (Job job : jobs) {
-                    if (job.process.isAlive()) {
-                        aliveCount++;
-                    }
-                }
-                int currentAlive = 0;
-                for (Job job : jobs) {
-                    if (!job.process.isAlive()) {
-                        continue;
-                    }
-                    currentAlive++;
-                    String marker = " ";
-                    if (currentAlive == aliveCount) {
+                java.util.ArrayList<Job> completedJobs =
+                        new java.util.ArrayList<>();
+                for (int i = 0; i < jobs.size(); i++) {
+                    Job job = jobs.get(i);
+                    String marker;
+                    if (i == jobs.size() - 1) {
                         marker = "+";
-                    }
-                    else if (currentAlive == aliveCount - 1) {
+                    } else if (i == jobs.size() - 2) {
                         marker = "-";
+                    } else {
+                        marker = " ";
+                    }  // + for last, - for others
+                    if (job.process.isAlive()) {
+                        System.out.printf(
+                            "[%d]%s  %-24s %s &\n",
+                            job.jobId,
+                            marker,
+                            "Running",
+                            job.command
+                        );
+                    } else {
+                        System.out.printf(
+                            "[%d]%s  %-24s %s\n",
+                            job.jobId,
+                            marker,
+                            "Done",
+                            job.command
+                        );
+                        completedJobs.add(job);
                     }
-                    System.out.printf(
-                        "[%d]%s  %-24s%s%n",
-                        job.jobId,
-                        marker,
-                        "Running",
-                        job.command
-                    );
                 }
+                jobs.removeAll(completedJobs);
             }
             // echo
             else if (cmd.equals("echo")) {
@@ -399,11 +404,13 @@ public class Main {
                             }
                             Process process = pb.start();
                             System.out.println("[" + nextJobId + "] " + process.pid());
+                            String jobCommand = input.substring(0, input.lastIndexOf("&")).trim();
+                            // System.err.println("DEBUG: [" + jobCommand + "]");
                             jobs.add(
                                 new Job(
                                     nextJobId,
                                     process.pid(),
-                                    input,
+                                    jobCommand,
                                     process
                                 )
                             );

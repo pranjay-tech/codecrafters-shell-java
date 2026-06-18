@@ -1,4 +1,9 @@
 import java.io.File;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
+import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Scanner;
@@ -148,61 +153,284 @@ public class Main {
         return segments;
     }
 
-    // Execute a pipeline of two or more external commands
+    private static final java.util.Set<String> BUILTINS = new java.util.HashSet<>(
+        java.util.Arrays.asList("echo", "type", "pwd", "cd", "jobs", "exit")
+    );
+
+    private static boolean isBuiltin(String cmd) {
+        return BUILTINS.contains(cmd);
+    }
+
+    /**
+     * Execute a built-in command, reading from `stdin` and writing to `stdout`.
+     * Returns the exit code (0 = success).
+     */
+    private static int executeBuiltin(
+            String[] parts,
+            InputStream stdin,
+            OutputStream stdout,
+            File currentDirectory,
+            java.util.ArrayList<Job> jobs
+    ) throws Exception {
+        PrintStream out = new PrintStream(stdout, true);
+        String cmd = parts[0];
+
+        if (cmd.equals("echo")) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 1; i < parts.length; i++) {
+                if (i > 1) sb.append(" ");
+                sb.append(parts[i]);
+            }
+            out.println(sb.toString());
+            return 0;
+        }
+
+        if (cmd.equals("pwd")) {
+            out.println(currentDirectory.getAbsolutePath());
+            return 0;
+        }
+
+        if (cmd.equals("type")) {
+            if (parts.length < 2) return 1;
+            String t = parts[1];
+            if (isBuiltin(t)) {
+                out.println(t + " is a shell builtin");
+            } else {
+                String path = System.getenv("PATH");
+                boolean found = false;
+                for (String dir : path.split(File.pathSeparator)) {
+                    File file = new File(dir, t);
+                    if (file.exists() && file.canExecute()) {
+                        out.println(t + " is " + file.getAbsolutePath());
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    out.println(t + ": not found");
+                    return 1;
+                }
+            }
+            return 0;
+        }
+
+        if (cmd.equals("jobs")) {
+            int total = jobs.size();
+            java.util.ArrayList<Job> completedJobs = new java.util.ArrayList<>();
+            for (int i = 0; i < total; i++) {
+                Job job = jobs.get(i);
+                // + for last, - for second-to-last, space for all others
+                String marker;
+                if (i == total - 1) {
+                    marker = "+";
+                } else if (i == total - 2) {
+                    marker = "-";
+                } else {
+                    marker = " ";
+                }
+                if (job.process.isAlive()) {
+                    out.printf("[%d]%s  %-23s %s &\n", job.jobId, marker, "Running", job.command);
+                } else {
+                    out.printf("[%d]%s  %-23s %s\n", job.jobId, marker, "Done", job.command);
+                    // Mark for removal after display
+                    completedJobs.add(job);
+                }
+            }
+            // Remove completed jobs after printing
+            jobs.removeAll(completedJobs);
+            return 0;
+        }
+
+        // cd and exit don't make much sense in pipelines, but handle gracefully
+        if (cmd.equals("cd")) {
+            return 0;
+        }
+        if (cmd.equals("exit")) {
+            return 0;
+        }
+
+        return 1;
+    }
+
+    // Execute a pipeline of two or more commands (external or built-in)
     private static void executePipeline(
             java.util.ArrayList<String[]> segments,
             File currentDirectory,
             String stdoutFile,
             boolean appendStdout,
             String stderrFile,
-            boolean appendStderr
+            boolean appendStderr,
+            java.util.ArrayList<Job> jobs
     ) throws Exception {
         int n = segments.size();
 
-        // Build all ProcessBuilders
-        java.util.ArrayList<ProcessBuilder> builders = new java.util.ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            ProcessBuilder pb = new ProcessBuilder(segments.get(i));
-            pb.directory(currentDirectory);
-            // stderr for all processes goes to terminal or file
-            if (stderrFile != null) {
-                if (appendStderr) {
-                    pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(stderrFile)));
+        // Check if any segment is a built-in
+        boolean anyBuiltin = false;
+        for (String[] seg : segments) {
+            if (isBuiltin(seg[0])) {
+                anyBuiltin = true;
+                break;
+            }
+        }
+
+        // If no built-ins, use the fast path with ProcessBuilder.startPipeline
+        if (!anyBuiltin) {
+            // Build all ProcessBuilders
+            java.util.ArrayList<ProcessBuilder> builders = new java.util.ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                ProcessBuilder pb = new ProcessBuilder(segments.get(i));
+                pb.directory(currentDirectory);
+                // stderr for all processes goes to terminal or file
+                if (stderrFile != null) {
+                    if (appendStderr) {
+                        pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(stderrFile)));
+                    } else {
+                        pb.redirectError(new File(stderrFile));
+                    }
                 } else {
-                    pb.redirectError(new File(stderrFile));
+                    pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                }
+                builders.add(pb);
+            }
+
+            // Use Java's built-in pipeline support (Java 9+)
+            // This correctly wires stdout of each process to stdin of the next
+            java.util.List<Process> procs = ProcessBuilder.startPipeline(builders);
+
+            // Handle stdout of last process
+            Process last = procs.get(procs.size() - 1);
+            if (stdoutFile != null) {
+                // drain last process stdout to file
+                byte[] buf = last.getInputStream().readAllBytes();
+                if (appendStdout) {
+                    Files.write(Path.of(stdoutFile), buf,
+                        StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                } else {
+                    Files.write(Path.of(stdoutFile), buf,
+                        StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                 }
             } else {
-                pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                // stream last process stdout to terminal
+                last.getInputStream().transferTo(System.out);
+                System.out.flush();
             }
-            builders.add(pb);
+
+            // Wait for all processes
+            for (Process p : procs) {
+                p.waitFor();
+            }
+            return;
         }
 
-        // Use Java's built-in pipeline support (Java 9+)
-        // This correctly wires stdout of each process to stdin of the next
-        java.util.List<Process> procs = ProcessBuilder.startPipeline(builders);
+        // Mixed pipeline: wire segments manually using PipedInputStream/PipedOutputStream
+        // pipes[i] connects output of segment i to input of segment i+1
+        PipedOutputStream[] pipeOuts = new PipedOutputStream[n - 1];
+        PipedInputStream[]  pipeIns  = new PipedInputStream[n - 1];
+        for (int i = 0; i < n - 1; i++) {
+            pipeOuts[i] = new PipedOutputStream();
+            pipeIns[i]  = new PipedInputStream(pipeOuts[i], 65536);
+        }
 
-        // Handle stdout of last process
-        Process last = procs.get(procs.size() - 1);
+        // Collect threads/processes so we can join/wait
+        java.util.ArrayList<Thread>  threads   = new java.util.ArrayList<>();
+        java.util.ArrayList<Process> processes = new java.util.ArrayList<>();
+
+        // Determine final stdout destination
+        final OutputStream finalOut;
         if (stdoutFile != null) {
-            // drain last process stdout to file
-            byte[] buf = last.getInputStream().readAllBytes();
-            if (appendStdout) {
-                Files.write(Path.of(stdoutFile), buf,
-                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-            } else {
-                Files.write(Path.of(stdoutFile), buf,
-                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
-            }
+            if (appendStdout)
+                finalOut = Files.newOutputStream(Path.of(stdoutFile), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            else
+                finalOut = Files.newOutputStream(Path.of(stdoutFile), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         } else {
-            // stream last process stdout to terminal
-            last.getInputStream().transferTo(System.out);
-            System.out.flush();
+            finalOut = System.out;
         }
 
-        // Wait for all processes
-        for (Process p : procs) {
-            p.waitFor();
+        for (int i = 0; i < n; i++) {
+            final String[] seg = segments.get(i);
+            final InputStream  segIn  = (i == 0)     ? InputStream.nullInputStream() : pipeIns[i - 1];
+            final OutputStream segOut = (i == n - 1) ? finalOut                      : pipeOuts[i];
+            final int idx = i;
+
+            if (isBuiltin(seg[0])) {
+                final File dir = currentDirectory;
+                final java.util.ArrayList<Job> jobsRef = jobs;
+                Thread t = new Thread(() -> {
+                    try {
+                        executeBuiltin(seg, segIn, segOut, dir, jobsRef);
+                    } catch (Exception e) {
+                        // ignore
+                    } finally {
+                        // Close our output so the next stage sees EOF
+                        if (idx < n - 1) {
+                            try { pipeOuts[idx].close(); } catch (Exception ignored) {}
+                        } else {
+                            // flush final output (but don't close System.out)
+                            try { segOut.flush(); } catch (Exception ignored) {}
+                            if (stdoutFile != null) {
+                                try { segOut.close(); } catch (Exception ignored) {}
+                            }
+                        }
+                    }
+                });
+                t.start();
+                threads.add(t);
+            } else {
+                // External command
+                ProcessBuilder pb = new ProcessBuilder(seg);
+                pb.directory(currentDirectory);
+                // stderr
+                if (stderrFile != null) {
+                    if (appendStderr)
+                        pb.redirectError(ProcessBuilder.Redirect.appendTo(new File(stderrFile)));
+                    else
+                        pb.redirectError(new File(stderrFile));
+                } else {
+                    pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                }
+
+                Process proc = pb.start();
+                processes.add(proc);
+
+                // Thread to feed stdin from pipe
+                final InputStream procFeed = segIn;
+                Thread feedThread = new Thread(() -> {
+                    try {
+                        procFeed.transferTo(proc.getOutputStream());
+                    } catch (Exception ignored) {
+                    } finally {
+                        try { proc.getOutputStream().close(); } catch (Exception ignored) {}
+                    }
+                });
+                feedThread.start();
+                threads.add(feedThread);
+
+                // Thread to drain stdout to next pipe or final output
+                final OutputStream procDrain = segOut;
+                Thread drainThread = new Thread(() -> {
+                    try {
+                        proc.getInputStream().transferTo(procDrain);
+                    } catch (Exception ignored) {
+                    } finally {
+                        if (idx < n - 1) {
+                            try { pipeOuts[idx].close(); } catch (Exception ignored) {}
+                        } else {
+                            try { procDrain.flush(); } catch (Exception ignored) {}
+                            if (stdoutFile != null) {
+                                try { procDrain.close(); } catch (Exception ignored) {}
+                            }
+                        }
+                    }
+                });
+                drainThread.start();
+                threads.add(drainThread);
+            }
         }
+
+        // Wait for all threads
+        for (Thread t : threads) t.join();
+        // Wait for all processes
+        for (Process p : processes) p.waitFor();
     }
 
     public static void main(String[] args) throws Exception {
@@ -312,7 +540,7 @@ public class Main {
             if (hasPipe) {
                 java.util.ArrayList<String[]> segments = splitByPipe(parts);
                 executePipeline(segments, currentDirectory,
-                    stdoutFile, appendStdout, stderrFile, appendStderr);
+                    stdoutFile, appendStdout, stderrFile, appendStderr, jobs);
                 continue;
             }
 

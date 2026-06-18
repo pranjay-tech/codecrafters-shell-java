@@ -348,12 +348,19 @@ public class Main {
                                 pb.redirectError(new File(stderrFile));
                             }
                         }
-                        Process process = pb.start();
+                        // Process process = pb.start();
                         if (background) {
+                            if (stdoutFile == null) {
+                                pb.redirectOutput(ProcessBuilder.Redirect.INHERIT);
+                            }
+                            if (stderrFile == null) {
+                                pb.redirectError(ProcessBuilder.Redirect.INHERIT);
+                            }
+                            Process process = pb.start();
                             System.out.println("[" + nextJobId + "] " + process.pid());
                             nextJobId++;
-                        }
-                        else {
+                        } else {
+                            Process process = pb.start();
                             if (stdoutFile == null) {
                                 process.getInputStream().transferTo(System.out);
                             }

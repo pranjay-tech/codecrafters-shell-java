@@ -115,11 +115,23 @@ public class Main {
         jobs.removeAll(completedJobs);
     }
 
+    // Find the smallest available job number not currently in use
+    private static int nextAvailableJobId(java.util.ArrayList<Job> jobs) {
+        java.util.HashSet<Integer> usedIds = new java.util.HashSet<>();
+        for (Job job : jobs) {
+            usedIds.add(job.jobId);
+        }
+        int id = 1;
+        while (usedIds.contains(id)) {
+            id++;
+        }
+        return id;
+    }
+
     public static void main(String[] args) throws Exception {
         Scanner sc = new Scanner(System.in);
         File currentDirectory =
                 new File(System.getProperty("user.dir"));
-        int nextJobId = 1;
         java.util.ArrayList<Job> jobs = new java.util.ArrayList<>();
         while (true) {
             // Reap completed jobs before printing the prompt
@@ -442,18 +454,19 @@ public class Main {
                                 pb.redirectError(ProcessBuilder.Redirect.INHERIT);
                             }
                             Process process = pb.start();
-                            System.out.println("[" + nextJobId + "] " + process.pid());
+                            // Use smallest available job number instead of incrementing
+                            int jobId = nextAvailableJobId(jobs);
+                            System.out.println("[" + jobId + "] " + process.pid());
                             String jobCommand = input.substring(0, input.lastIndexOf("&")).trim();
                             // System.err.println("DEBUG: [" + jobCommand + "]");
                             jobs.add(
                                 new Job(
-                                    nextJobId,
+                                    jobId,
                                     process.pid(),
                                     jobCommand,
                                     process
                                 )
                             );
-                            nextJobId++;
                         } 
                         else {
                             Process process = pb.start();

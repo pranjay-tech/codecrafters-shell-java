@@ -240,21 +240,24 @@ public class Main {
             }
             // jobs
             else if (cmd.equals("jobs")) {
-                java.util.ArrayList<Job> completedJobs =
-                        new java.util.ArrayList<>();
-                for (int i = 0; i < jobs.size(); i++) {
+                java.util.ArrayList<Job> completedJobs = new java.util.ArrayList<>();
+                int total = jobs.size();
+
+                // First pass: print all jobs with markers based on full current list
+                for (int i = 0; i < total; i++) {
                     Job job = jobs.get(i);
+                    // + for last, - for second-to-last, space for all others
                     String marker;
-                    if (i == jobs.size() - 1) {
+                    if (i == total - 1) {
                         marker = "+";
-                    } else if (i == jobs.size() - 2) {
+                    } else if (i == total - 2) {
                         marker = "-";
                     } else {
                         marker = " ";
-                    }  // + for last, - for others
+                    }
                     if (job.process.isAlive()) {
                         System.out.printf(
-                            "[%d]%s  %-24s %s &\n",
+                            "[%d]%s  %-23s %s &\n",
                             job.jobId,
                             marker,
                             "Running",
@@ -262,15 +265,17 @@ public class Main {
                         );
                     } else {
                         System.out.printf(
-                            "[%d]%s  %-24s %s\n",
+                            "[%d]%s  %-23s %s\n",
                             job.jobId,
                             marker,
                             "Done",
                             job.command
                         );
+                        // Mark for removal after display
                         completedJobs.add(job);
                     }
                 }
+                // Remove completed jobs after printing
                 jobs.removeAll(completedJobs);
             }
             // echo

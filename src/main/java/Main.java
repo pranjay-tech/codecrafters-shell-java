@@ -134,6 +134,8 @@ public class Main {
                 new File(System.getProperty("user.dir"));
         java.util.ArrayList<Job> jobs = new java.util.ArrayList<>();
         while (true) {
+            // Brief wait to let background processes register their exit with the OS
+            Thread.sleep(100);
             // Reap completed jobs before printing the prompt
             reapJobs(jobs);
 

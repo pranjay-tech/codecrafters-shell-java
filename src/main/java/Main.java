@@ -240,18 +240,32 @@ public class Main {
             }
             // jobs
             else if (cmd.equals("jobs")) {
-                for (int i = 0; i < jobs.size(); i++) {
-                    Job job = jobs.get(i);
+                int aliveCount = 0;
+                for (Job job : jobs) {
                     if (job.process.isAlive()) {
-                        String marker = "+";
-                        System.out.printf(
-                            "[%d]%s  %-24s%s%n",
-                            job.jobId,
-                            marker,
-                            "Running",
-                            job.command
-                        );
+                        aliveCount++;
                     }
+                }
+                int currentAlive = 0;
+                for (Job job : jobs) {
+                    if (!job.process.isAlive()) {
+                        continue;
+                    }
+                    currentAlive++;
+                    String marker = " ";
+                    if (currentAlive == aliveCount) {
+                        marker = "+";
+                    }
+                    else if (currentAlive == aliveCount - 1) {
+                        marker = "-";
+                    }
+                    System.out.printf(
+                        "[%d]%s  %-24s%s%n",
+                        job.jobId,
+                        marker,
+                        "Running",
+                        job.command
+                    );
                 }
             }
             // echo

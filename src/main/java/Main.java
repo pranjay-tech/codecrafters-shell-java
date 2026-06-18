@@ -2,6 +2,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Scanner;
+import java.nio.file.StandardOpenOption;
 
 public class Main {
 
@@ -73,14 +74,25 @@ public class Main {
             String[] parts = parseCommand(input);
             String stdoutFile = null;
             String stderrFile = null;
+            boolean appendStdout = false;
             java.util.ArrayList<String> commandParts = new java.util.ArrayList<>();
 
             for (int i = 0; i < parts.length; i++) {
-                if (parts[i].equals(">") || parts[i].equals("1>")) {
+               if (parts[i].equals(">") || parts[i].equals("1>")) {
                     if (i + 1 < parts.length) {
                         stdoutFile = parts[i + 1];
+                        appendStdout = false;
                     }
-                    i++; // skip filename
+                    i++;
+                    continue;
+                }
+
+                if (parts[i].equals(">>") || parts[i].equals("1>>")) {
+                    if (i + 1 < parts.length) {
+                        stdoutFile = parts[i + 1];
+                        appendStdout = true;
+                    }
+                    i++;
                     continue;
                 }
                 if (parts[i].equals("2>")) {
@@ -109,8 +121,18 @@ public class Main {
                 String output = currentDirectory.getAbsolutePath()
                         + System.lineSeparator();
                 if (stdoutFile != null) {
-                    Files.writeString(Path.of(stdoutFile), output);
-                } else {
+                    if (appendStdout) {
+                        Files.writeString(
+                            Path.of(stdoutFile),
+                            output,
+                            java.nio.file.StandardOpenOption.CREATE,
+                            java.nio.file.StandardOpenOption.APPEND
+                        );
+                    } else {
+                        Files.writeString(Path.of(stdoutFile), output);
+                    }
+                } 
+                else {
                     System.out.print(output);
                 }
             }
@@ -149,10 +171,20 @@ public class Main {
                     output.append(parts[i]);
                 }
                 if (stdoutFile != null) {
-                    Files.writeString(
+                    if (appendStdout) {
+                        Files.writeString(
+                            Path.of(stdoutFile),
+                            output.toString() + System.lineSeparator(),
+                            java.nio.file.StandardOpenOption.CREATE,
+                            java.nio.file.StandardOpenOption.APPEND
+                        );
+                    } 
+                    else {
+                        Files.writeString(
                             Path.of(stdoutFile),
                             output.toString() + System.lineSeparator()
-                    );
+                        );
+                    }
                 } 
                 else {
                     System.out.println(output);
@@ -161,23 +193,61 @@ public class Main {
             // type
             else if (cmd.equals("type")) {
                 if (parts.length < 2) continue;
+
                 String t = parts[1];
-                if (t.equals("echo") || t.equals("exit") || t.equals("type") || t.equals("pwd") || t.equals("cd")) {
-                    System.out.println(t + " is a shell builtin");
+                String output = null;
+                String error = null;
+
+                if (t.equals("echo") || t.equals("exit") ||
+                    t.equals("type") || t.equals("pwd") ||
+                    t.equals("cd")) {
+
+                    output = t + " is a shell builtin" + System.lineSeparator();
                 }
                 else {
                     String path = System.getenv("PATH");
                     boolean found = false;
+
                     for (String dir : path.split(File.pathSeparator)) {
                         File file = new File(dir, t);
+
                         if (file.exists() && file.canExecute()) {
-                            System.out.println(t + " is " + file.getAbsolutePath());
+                            output = t + " is " + file.getAbsolutePath()
+                                    + System.lineSeparator();
                             found = true;
                             break;
                         }
                     }
+
                     if (!found) {
-                        System.out.println(t + ": not found");
+                        error = t + ": not found" + System.lineSeparator();
+                    }
+                }
+
+                // handle stdout
+                if (output != null) {
+                    if (stdoutFile != null) {
+                        if (appendStdout) {
+                            Files.writeString(
+                                Path.of(stdoutFile),
+                                output,
+                                java.nio.file.StandardOpenOption.CREATE,
+                                java.nio.file.StandardOpenOption.APPEND
+                            );
+                        } else {
+                            Files.writeString(Path.of(stdoutFile), output);
+                        }
+                    } else {
+                        System.out.print(output);
+                    }
+                }
+
+                // handle stderr
+                if (error != null) {
+                    if (stderrFile != null) {
+                        Files.writeString(Path.of(stderrFile), error);
+                    } else {
+                        System.err.print(error);
                     }
                 }
             }
@@ -191,7 +261,12 @@ public class Main {
                         ProcessBuilder pb = new ProcessBuilder(parts);
                         pb.directory(currentDirectory);
                         if (stdoutFile != null) {
-                            pb.redirectOutput(new File(stdoutFile));
+                            if (appendStdout) {
+                                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(
+                                        new File(stdoutFile)));
+                            } else {
+                                pb.redirectOutput(new File(stdoutFile));
+                            }
                         }
                         if (stderrFile != null) {
                             pb.redirectError(new File(stderrFile));

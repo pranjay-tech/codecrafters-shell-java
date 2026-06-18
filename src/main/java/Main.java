@@ -70,11 +70,26 @@ public class Main {
         }
     }
 
+    static class Job {
+    int jobId;
+    long pid;
+    String command;
+    Process process;
+
+    Job(int jobId, long pid, String command, Process process) {
+        this.jobId = jobId;
+        this.pid = pid;
+        this.command = command;
+        this.process = process;
+    }
+}
+
     public static void main(String[] args) throws Exception {
         Scanner sc = new Scanner(System.in);
         File currentDirectory =
                 new File(System.getProperty("user.dir"));
         int nextJobId = 1;
+        java.util.ArrayList<Job> jobs = new java.util.ArrayList<>();
         while (true) {
             System.out.print("$ ");
             String input = sc.nextLine();
@@ -225,7 +240,19 @@ public class Main {
             }
             // jobs
             else if (cmd.equals("jobs")) {
-                // Empty implementation for this stage
+                for (int i = 0; i < jobs.size(); i++) {
+                    Job job = jobs.get(i);
+                    if (job.process.isAlive()) {
+                        String marker = "+";
+                        System.out.printf(
+                            "[%d]%s  %-24s%s%n",
+                            job.jobId,
+                            marker,
+                            "Running",
+                            job.command
+                        );
+                    }
+                }
             }
             // echo
             else if (cmd.equals("echo")) {
@@ -358,8 +385,17 @@ public class Main {
                             }
                             Process process = pb.start();
                             System.out.println("[" + nextJobId + "] " + process.pid());
+                            jobs.add(
+                                new Job(
+                                    nextJobId,
+                                    process.pid(),
+                                    input,
+                                    process
+                                )
+                            );
                             nextJobId++;
-                        } else {
+                        } 
+                        else {
                             Process process = pb.start();
                             if (stdoutFile == null) {
                                 process.getInputStream().transferTo(System.out);

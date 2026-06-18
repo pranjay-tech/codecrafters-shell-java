@@ -1,4 +1,6 @@
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Scanner;
 
 public class Main {
@@ -69,19 +71,31 @@ public class Main {
             System.out.print("$ ");
             String input = sc.nextLine();
             String[] parts = parseCommand(input);
-            String redirectFile = null;
+            String stdoutFile = null;
+            String stderrFile = null;
             java.util.ArrayList<String> commandParts = new java.util.ArrayList<>();
 
             for (int i = 0; i < parts.length; i++) {
                 if (parts[i].equals(">") || parts[i].equals("1>")) {
                     if (i + 1 < parts.length) {
-                        redirectFile = parts[i + 1];
+                        stdoutFile = parts[i + 1];
                     }
-                    break;
+                    i++; // skip filename
+                    continue;
+                }
+                if (parts[i].equals("2>")) {
+                    if (i + 1 < parts.length) {
+                        stderrFile = parts[i + 1];
+                    }
+                    i++; // skip filename
+                    continue;
                 }
                 commandParts.add(parts[i]);
             }
             parts = commandParts.toArray(new String[0]);
+            if (stderrFile != null) {
+                Files.writeString(Path.of(stderrFile), "");
+            }
             if (parts.length == 0) {
                 continue;
             }
@@ -92,7 +106,13 @@ public class Main {
             }
             // pwd
             else if (cmd.equals("pwd")) {
-                System.out.println(currentDirectory.getAbsolutePath());
+                String output = currentDirectory.getAbsolutePath()
+                        + System.lineSeparator();
+                if (stdoutFile != null) {
+                    Files.writeString(Path.of(stdoutFile), output);
+                } else {
+                    System.out.print(output);
+                }
             }
             // cd
             else if (cmd.equals("cd")) {
@@ -110,8 +130,15 @@ public class Main {
                 }
                 if (newDir.exists() && newDir.isDirectory()) {
                     currentDirectory = newDir.getCanonicalFile();
-                } else {
-                    System.out.println("cd: " + path + ": No such file or directory");
+                } 
+                else {
+                    String error = "cd: " + path + ": No such file or directory" + System.lineSeparator();
+                    if (stderrFile != null) {
+                        Files.writeString(Path.of(stderrFile), error);
+                    } 
+                    else {
+                        System.err.print(error);
+                    }
                 }
             }
             // echo
@@ -121,12 +148,13 @@ public class Main {
                     if (i > 1) output.append(" ");
                     output.append(parts[i]);
                 }
-                if (redirectFile != null) {
-                    java.nio.file.Files.writeString(
-                        java.nio.file.Path.of(redirectFile),
-                        output.toString() + System.lineSeparator()
+                if (stdoutFile != null) {
+                    Files.writeString(
+                            Path.of(stdoutFile),
+                            output.toString() + System.lineSeparator()
                     );
-                } else {
+                } 
+                else {
                     System.out.println(output);
                 }
             }
@@ -162,21 +190,31 @@ public class Main {
                     if (file.exists() && file.canExecute()) {
                         ProcessBuilder pb = new ProcessBuilder(parts);
                         pb.directory(currentDirectory);
-                        if (redirectFile != null) {
-                            pb.redirectOutput(new File(redirectFile));
+                        if (stdoutFile != null) {
+                            pb.redirectOutput(new File(stdoutFile));
+                        }
+                        if (stderrFile != null) {
+                            pb.redirectError(new File(stderrFile));
                         }
                         Process process = pb.start();
-                        if (redirectFile == null) {
+                        if (stdoutFile == null) {
                             process.getInputStream().transferTo(System.out);
                         }
-                        process.getErrorStream().transferTo(System.err);
+                        if (stderrFile == null) {
+                            process.getErrorStream().transferTo(System.err);
+                        }
                         process.waitFor();
                         found = true;
                         break;
                     }
                 }
                 if (!found) {
-                    System.out.println(cmd + ": command not found");
+                    String error = cmd + ": command not found" + System.lineSeparator();
+                    if (stderrFile != null) {
+                        Files.writeString(Path.of(stderrFile), error);
+                    } else {
+                        System.err.print(error);
+                    }
                 }
             }
         }

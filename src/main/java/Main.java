@@ -74,6 +74,7 @@ public class Main {
         Scanner sc = new Scanner(System.in);
         File currentDirectory =
                 new File(System.getProperty("user.dir"));
+        int nextJobId = 1;
         while (true) {
             System.out.print("$ ");
             String input = sc.nextLine();
@@ -121,6 +122,14 @@ public class Main {
                 commandParts.add(parts[i]);
             }
             parts = commandParts.toArray(new String[0]);
+            boolean background = false;
+            if (parts.length > 0 && parts[parts.length - 1].equals("&")) {
+                background = true;
+
+                String[] temp = new String[parts.length - 1];
+                System.arraycopy(parts, 0, temp, 0, parts.length - 1);
+                parts = temp;
+            }
             // if (stderrFile != null) {
             //     Files.writeString(Path.of(stderrFile), "");
             // }
@@ -340,13 +349,19 @@ public class Main {
                             }
                         }
                         Process process = pb.start();
-                        if (stdoutFile == null) {
-                            process.getInputStream().transferTo(System.out);
+                        if (background) {
+                            System.out.println("[" + nextJobId + "] " + process.pid());
+                            nextJobId++;
                         }
-                        if (stderrFile == null) {
-                            process.getErrorStream().transferTo(System.err);
+                        else {
+                            if (stdoutFile == null) {
+                                process.getInputStream().transferTo(System.out);
+                            }
+                            if (stderrFile == null) {
+                                process.getErrorStream().transferTo(System.err);
+                            }
+                            process.waitFor();
                         }
-                        process.waitFor();
                         found = true;
                         break;
                     }
